@@ -1,12 +1,14 @@
-import pygame
+import asyncio
 import platform
+import pygame
+import math
 
+# Debug: Confirm module is loaded
 print("lupta.py: Module loaded")
 
 # Constants
-WIDTH, HEIGHT = 600,800
+WIDTH, HEIGHT = 800, 600
 PLAYER_SIZE = 50
-PLAYER_COLOR = (255, 0, 0)
 ENEMY_SIZE = 50
 ENEMY_COLOR = (0, 0, 255)
 ENEMY_POS = (300, 300)
@@ -15,8 +17,10 @@ HEALTH_BAR_HEIGHT = 10
 HEALTH_BAR_COLOR = (0, 255, 0)
 HEALTH_BAR_BG_COLOR = (255, 0, 0)
 FPS = 60
-MAP_WIDTH, MAP_HEIGHT = 10000, 10000
-GRID_SPACING = 500  # Adjusted for larger map
+MAP_WIDTH, MAP_HEIGHT = 1600, 1200
+MAP_COLOR = (255, 255, 255)
+GRID_COLOR = (0, 0, 0)
+GRID_SPACING = 100
 DODGE_DURATION = 18
 DODGE_DISTANCE = 100
 DODGE_COOLDOWN = 60
@@ -45,7 +49,6 @@ class Enemy:
     def move_towards_player(self, player):
         if not self.alive:
             return
-        import math
         dx = player.rect.centerx - self.rect.centerx
         dy = player.rect.centery - self.rect.centery
         distance = math.sqrt(dx**2 + dy**2)
@@ -65,7 +68,6 @@ class Enemy:
         if not self.alive or self.attack_cooldown > 0:
             self.is_attacking = False
             return False
-        import math
         dx = player.rect.centerx - self.rect.centerx
         dy = player.rect.centery - self.rect.centery
         distance = math.sqrt(dx**2 + dy**2)
@@ -87,28 +89,22 @@ class Enemy:
         if self.attack_cooldown > 0:
             self.attack_cooldown -= 1
 
-def play_game(screen, clock, player):
+async def play_game(screen, clock, player):
+    """Fighting mode with enemy, attack, block, and dodge"""
     print("lupta.py: Entering play_game")
     print(f"lupta.py: Player position: ({player.rect.x}, {player.rect.y})")
     enemy = Enemy()
-
-    # Load the map directly
-    try:
-        map_surface = pygame.image.load("map.png")
-    except pygame.error as e:
-        print(f"lupta.py: Failed to load map.png: {e}")
-        map_surface = pygame.Surface((MAP_WIDTH, MAP_HEIGHT))
-        map_surface.fill((255, 255, 255))  # Fallback to white surface
-
-    # Verify map size
-    map_width, map_height = map_surface.get_size()
-    if map_width != MAP_WIDTH or map_height != MAP_HEIGHT:
-        print(f"lupta.py: Warning: Expected map size {MAP_WIDTH}x{MAP_HEIGHT}, got {map_width}x{map_height}")
+    
+    map_surface = pygame.Surface((MAP_WIDTH, MAP_HEIGHT))
+    map_surface.fill(MAP_COLOR)
+    for x in range(0, MAP_WIDTH, GRID_SPACING):
+        pygame.draw.line(map_surface, GRID_COLOR, (x, 0), (x, MAP_HEIGHT), 2)
+    for y in range(0, MAP_HEIGHT, GRID_SPACING):
+        pygame.draw.line(map_surface, GRID_COLOR, (0, y), (MAP_WIDTH, y), 2)
 
     font = pygame.font.SysFont("arial", 24)
     debug_font = pygame.font.SysFont("arial", 20)
 
-    # Dodge state
     is_dodging = False
     dodge_timer = 0
     dodge_direction = None
@@ -127,13 +123,16 @@ def play_game(screen, clock, player):
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     print("lupta.py: Quit event received")
+                    running = False
                     return False
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_ESCAPE:
                         print("lupta.py: ESC pressed, returning to menu")
+                        running = False
                         return False
                     if event.key == pygame.K_f:
                         print("lupta.py: F pressed, switching to exploration mode")
+                        running = False
                         return "switch_to_exploring"
                     if event.key == pygame.K_SPACE and not is_dodging and dodge_cooldown <= 0:
                         print("lupta.py: Space pressed, starting dodge")
@@ -144,9 +143,9 @@ def play_game(screen, clock, player):
                         print(f"lupta.py: Dodging {dodge_direction}, invincible: {is_invincible}")
         except Exception as e:
             print(f"lupta.py: Event handling error: {str(e)}")
+            running = False
             return False
 
-        # Update player movement
         moved, key_status = player.handle_movement(keys_pressed)
         if moved:
             print(f"lupta.py: Player moved to: ({player.rect.x}, {player.rect.y})")
@@ -159,7 +158,6 @@ def play_game(screen, clock, player):
             elif keys_pressed[pygame.K_d]:
                 last_direction = 'right'
 
-        # Handle dodge movement
         if is_dodging:
             dodge_timer -= 1
             if dodge_timer > 0:
@@ -181,48 +179,48 @@ def play_game(screen, clock, player):
         if dodge_cooldown > 0:
             dodge_cooldown -= 1
 
-       
+        player.rect.x = max(0, min(player.rect.x, MAP_WIDTH - PLAYER_SIZE))
+        player.rect.y = max(0, min(player.rect.y, MAP_HEIGHT - PLAYER_SIZE))
 
-        # Update enemy
         enemy.move_towards_player(player)
         enemy.attack_player(player, is_invincible)
         enemy.update()
 
-        # Update player combat
         attack_active = player.attack(enemy, mouse_buttons)
         block_active = player.block(mouse_buttons)
         player.update()
 
-        # Check game over
         if player.health <= 0:
             print("lupta.py: Player defeated!")
+            running = False
             return "return_to_menu"
 
-        # Calculate camera offset
         camera_x = player.rect.x - WIDTH // 2 + PLAYER_SIZE // 2
         camera_y = player.rect.y - HEIGHT // 2 + PLAYER_SIZE // 2
         camera_x = max(0, min(camera_x, MAP_WIDTH - WIDTH))
         camera_y = max(0, min(camera_y, MAP_HEIGHT - HEIGHT))
 
-        # Draw everything
         try:
-            # Draw map
             screen.blit(map_surface, (-camera_x, -camera_y))
 
-           
+            grid_x = (player.rect.x // GRID_SPACING) * GRID_SPACING
+            grid_y = (player.rect.y // GRID_SPACING) * GRID_SPACING
+            pygame.draw.rect(screen, (255, 255, 0), 
+                            (grid_x - camera_x, grid_y - camera_y, GRID_SPACING, GRID_SPACING), 2)
 
-            # Draw player
-            pygame.draw.rect(screen, PLAYER_COLOR, 
-                            (player.rect.x - camera_x, player.rect.y - camera_y, PLAYER_SIZE, PLAYER_SIZE))
+            # Draw player sprite
+            frame_index = 0  # Single frame
+            frame = player.frames[frame_index][0 if player.direction == "right" else 1]
+            player_pos = (player.rect.x - camera_x, player.rect.y - camera_y)
+            print(f"lupta.py: Drawing player at screen position: {player_pos}")
+            screen.blit(frame, player_pos)
 
-            # Draw enemy
             if enemy.alive:
-                print("lupta.py: Drawing enemy at", (enemy.rect.x, enemy.rect.y))
+                enemy_pos = (enemy.rect.x - camera_x, enemy.rect.y - camera_y)
+                print(f"lupta.py: Drawing enemy at screen position: {enemy_pos}")
                 pygame.draw.rect(screen, ENEMY_COLOR, 
                                 (enemy.rect.x - camera_x, enemy.rect.y - camera_y, ENEMY_SIZE, ENEMY_SIZE))
 
-            # Draw health bars
-            # Player health bar
             health_ratio = player.health / player.max_health
             pygame.draw.rect(screen, HEALTH_BAR_BG_COLOR, 
                             (player.rect.x - camera_x, player.rect.y - camera_y - 20, HEALTH_BAR_WIDTH, HEALTH_BAR_HEIGHT))
@@ -231,7 +229,6 @@ def play_game(screen, clock, player):
             health_text = font.render(f"{int(player.health)}/{player.max_health}", True, (0, 0, 0))
             screen.blit(health_text, (player.rect.x - camera_x, player.rect.y - camera_y - 40))
 
-            # Enemy health bar
             if enemy.alive:
                 health_ratio = enemy.health / enemy.max_health
                 pygame.draw.rect(screen, HEALTH_BAR_BG_COLOR, 
@@ -241,7 +238,6 @@ def play_game(screen, clock, player):
                 health_text = font.render(f"{int(enemy.health)}/{enemy.max_health}", True, (0, 0, 0))
                 screen.blit(health_text, (enemy.rect.x - camera_x, enemy.rect.y - camera_y - 40))
 
-            # Draw instructions, debug, and coordinates
             text = font.render("WASD to move, Left Click to attack, Right Click to block, Space to dodge, F to switch, ESC to menu", True, (0, 0, 0))
             screen.blit(text, (10, 10))
             action_text = font.render(f"Keys: {', '.join(key_status) if key_status else 'None'}, Attack: {attack_active}, Block: {block_active}, Dodge: {is_dodging}, CD: {dodge_cooldown}, Enemy Attack: {enemy.is_attacking}", True, (0, 0, 0))
@@ -254,9 +250,29 @@ def play_game(screen, clock, player):
             pygame.display.flip()
         except Exception as e:
             print(f"lupta.py: Rendering error: {str(e)}")
+            running = False
             return False
 
         clock.tick(FPS)
+        await asyncio.sleep(1.0 / FPS)
 
     print("lupta.py: Exiting play_game")
     return True
+
+def setup():
+    pygame.init()
+    screen = pygame.display.set_mode((WIDTH, HEIGHT))
+    pygame.display.set_caption("Lupta Game")
+    clock = pygame.time.Clock()
+    return screen, clock
+
+async def main():
+    screen, clock = setup()
+    # Note: main() in lupta.py is not used since combined_game.py calls play_game directly
+    print("lupta.py: main() is not typically called directly when used with combined_game.py")
+
+if platform.system() == "Emscripten":
+    asyncio.ensure_future(main())
+else:
+    if __name__ == "__main__":
+        asyncio.run(main())

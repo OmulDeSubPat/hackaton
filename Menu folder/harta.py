@@ -1,50 +1,74 @@
 import pygame
 import platform
-from lupta import Enemy  # Import Enemy class from lupta.py
+from lupta import Enemy
+import math
 
-# Debug: Confirm module is loaded
 print("harta.py loaded")
 
 # Constants
-WIDTH, HEIGHT = 800, 600  # Screen size
-PLAYER_SIZE = 50          # Player square size
-PLAYER_COLOR = (0, 255, 0)  # Green player
-MAP_WIDTH, MAP_HEIGHT = 1600, 1200  # Map size
-MAP_COLOR = (255, 255, 255)  # White map
-GRID_COLOR = (0, 0, 0)    # Black grid lines
-GRID_SPACING = 100        # Grid lines every 100 pixels
+WIDTH, HEIGHT = 600,800
+PLAYER_SIZE = 50
+PLAYER_COLOR = (0, 255, 0)
+MAP_WIDTH, MAP_HEIGHT = 10000, 10000  # Match the 20,000x20,000 map.png
+GRID_SPACING = 500  # Adjusted for larger map
 FPS = 60
 HEALTH_BAR_WIDTH = 50
 HEALTH_BAR_HEIGHT = 10
-HEALTH_BAR_COLOR = (0, 255, 0)  # Green health
-HEALTH_BAR_BG_COLOR = (255, 0, 0)  # Red background
-DODGE_DURATION = 18       # 0.3 seconds at 60 FPS (18 frames)
-DODGE_DISTANCE = 100      # 1 tile (100 pixels)
-DODGE_COOLDOWN = 60       # 1 second at 60 FPS (60 frames)
+HEALTH_BAR_COLOR = (0, 255, 0)
+HEALTH_BAR_BG_COLOR = (255, 0, 0)
+DODGE_DURATION = 18
+DODGE_DISTANCE = 100
+DODGE_COOLDOWN = 60
+
+# Camera class to handle scrolling
+class Camera:
+    def __init__(self, width, height):
+        self.camera = pygame.Rect(0, 0, width, height)
+        self.width = width
+        self.height = height
+
+    def apply(self, rect):
+        return pygame.Rect(rect.x - self.camera.x, rect.y - self.camera.y, rect.width, rect.height)
+
+    def update(self, target):
+        x = -target.rect.centerx + int(WIDTH / 2)
+        y = -target.rect.centery + int(HEIGHT / 2)
+        x = min(0, x)
+        y = min(0, y)
+        x = max(-(MAP_WIDTH - WIDTH), x)
+        y = max(-(MAP_HEIGHT - HEIGHT), y)
+        self.camera = pygame.Rect(-x, -y, self.width, self.height)
 
 def play_game(screen, clock, player):
-    """Main game loop for exploration mode"""
     print("harta.py: Entering play_game")
     print(f"harta.py: Player position: ({player.rect.x}, {player.rect.y})")
-    
-    # Create white map surface with grid lines
-    map_surface = pygame.Surface((MAP_WIDTH, MAP_HEIGHT))
-    map_surface.fill(MAP_COLOR)
-    for x in range(0, MAP_WIDTH, GRID_SPACING):
-        pygame.draw.line(map_surface, GRID_COLOR, (x, 0), (x, MAP_HEIGHT), 2)  # Thicker lines
-    for y in range(0, MAP_HEIGHT, GRID_SPACING):
-        pygame.draw.line(map_surface, GRID_COLOR, (0, y), (MAP_WIDTH, y), 2)  # Thicker lines
+
+    # Load the entire map image
+    try:
+        map_surface = pygame.image.load("map2.png")
+        print(f"harta.py: Loaded map.png with size: {map_surface.get_size()}")
+        if map_surface.get_width() != MAP_WIDTH or map_surface.get_height() != MAP_HEIGHT:
+            print(f"harta.py: Warning: map.png size ({map_surface.get_width()}x{map_surface.get_height()}) does not match expected {MAP_WIDTH}x{MAP_HEIGHT}")
+    except pygame.error as e:
+        print(f"harta.py: Failed to load map.png: {e}")
+        # Fallback to a white surface if the image fails to load
+        map_surface = pygame.Surface((MAP_WIDTH, MAP_HEIGHT))
+        map_surface.fill((255, 255, 255))
+
+    # Initialize camera
+    camera = Camera(WIDTH, HEIGHT)
+    camera.update(player)
 
     font = pygame.font.SysFont("arial", 24)
-    debug_font = pygame.font.SysFont("arial", 20)  # Define debug_font
-    enemy = Enemy()  # Create a dummy enemy
-    enemy.rect.x, enemy.rect.y = 300, 300  # Initial position near player
+    debug_font = pygame.font.SysFont("arial", 20)
+    enemy = Enemy()
+    enemy.rect.x, enemy.rect.y = 19000, 19000
 
     # Dodge state
     is_dodging = False
     dodge_timer = 0
-    dodge_direction = None  # Will be 'up', 'down', 'left', 'right'
-    last_direction = 'right'  # Default direction if no movement
+    dodge_direction = None
+    last_direction = 'right'
     is_invincible = False
     dodge_cooldown = 0
 
@@ -65,12 +89,12 @@ def play_game(screen, clock, player):
                         return False
                     if event.key == pygame.K_f:
                         print("harta.py: F pressed, switching to fighting mode")
-                        return "switch_to_fighting"  # Signal to switch modes
+                        return "switch_to_fighting"
                     if event.key == pygame.K_SPACE and not is_dodging and dodge_cooldown <= 0:
                         print("harta.py: Space pressed, starting dodge")
                         is_dodging = True
                         dodge_timer = DODGE_DURATION
-                        dodge_direction = last_direction  # Use last movement direction
+                        dodge_direction = last_direction
                         is_invincible = True
                         print(f"harta.py: Dodging {dodge_direction}, invincible: {is_invincible}")
         except Exception as e:
@@ -81,7 +105,6 @@ def play_game(screen, clock, player):
         moved, key_status = player.handle_movement(keys_pressed)
         if moved:
             print(f"harta.py: Player moved to: ({player.rect.x}, {player.rect.y})")
-            # Update last direction based on keys pressed
             if keys_pressed[pygame.K_w]:
                 last_direction = 'up'
             elif keys_pressed[pygame.K_s]:
@@ -95,7 +118,6 @@ def play_game(screen, clock, player):
         if is_dodging:
             dodge_timer -= 1
             if dodge_timer > 0:
-                # Move player a fraction of the dodge distance each frame
                 fraction = 1.0 / DODGE_DURATION
                 if dodge_direction == 'up':
                     player.rect.y -= DODGE_DISTANCE * fraction
@@ -106,19 +128,15 @@ def play_game(screen, clock, player):
                 elif dodge_direction == 'right':
                     player.rect.x += DODGE_DISTANCE * fraction
             else:
-                # End dodge
                 is_dodging = False
                 is_invincible = False
                 dodge_cooldown = DODGE_COOLDOWN
                 print(f"harta.py: Dodge ended, invincible: {is_invincible}, cooldown: {dodge_cooldown}")
 
-        # Update dodge cooldown
         if dodge_cooldown > 0:
             dodge_cooldown -= 1
 
-        # Keep player within map boundaries
-        player.rect.x = max(0, min(player.rect.x, MAP_WIDTH - PLAYER_SIZE))
-        player.rect.y = max(0, min(player.rect.y, MAP_HEIGHT - PLAYER_SIZE))
+       
 
         # Update enemy
         enemy.move_towards_player(player)
@@ -135,51 +153,46 @@ def play_game(screen, clock, player):
             print("harta.py: Player defeated!")
             return "return_to_menu"
 
-        # Calculate camera offset
-        camera_x = player.rect.x - WIDTH // 2 + PLAYER_SIZE // 2
-        camera_y = player.rect.y - HEIGHT // 2 + PLAYER_SIZE // 2
-        camera_x = max(0, min(camera_x, MAP_WIDTH - WIDTH))
-        camera_y = max(0, min(camera_y, MAP_HEIGHT - HEIGHT))
+        # Update camera
+        camera.update(player)
 
-        # Draw map
+        # Draw everything
         try:
-            screen.blit(map_surface, (-camera_x, -camera_y))
+            # Draw the map
+            screen.fill((0, 0, 0))  # Clear screen
+            screen.blit(map_surface, (-camera.camera.x, -camera.camera.y))
 
-            # Highlight player's current grid cell
-            grid_x = (player.rect.x // GRID_SPACING) * GRID_SPACING
-            grid_y = (player.rect.y // GRID_SPACING) * GRID_SPACING
-            pygame.draw.rect(screen, (255, 255, 0), 
-                            (grid_x - camera_x, grid_y - camera_y, GRID_SPACING, GRID_SPACING), 2)
+          
 
             # Draw player
-            pygame.draw.rect(screen, PLAYER_COLOR, 
-                            (player.rect.x - camera_x, player.rect.y - camera_y, PLAYER_SIZE, PLAYER_SIZE))
+            player_rect = camera.apply(player.rect)
+            pygame.draw.rect(screen, PLAYER_COLOR, player_rect)
 
             # Draw enemy
             if enemy.alive:
                 print("harta.py: Drawing enemy at", (enemy.rect.x, enemy.rect.y))
-                pygame.draw.rect(screen, (0, 0, 255), 
-                                (enemy.rect.x - camera_x, enemy.rect.y - camera_y, PLAYER_SIZE, PLAYER_SIZE))
+                enemy_rect = camera.apply(enemy.rect)
+                pygame.draw.rect(screen, (0, 0, 255), enemy_rect)
 
             # Draw health bars
             # Player health bar
             health_ratio = player.health / player.max_health
-            pygame.draw.rect(screen, HEALTH_BAR_BG_COLOR, 
-                            (player.rect.x - camera_x, player.rect.y - camera_y - 20, HEALTH_BAR_WIDTH, HEALTH_BAR_HEIGHT))
-            pygame.draw.rect(screen, HEALTH_BAR_COLOR, 
-                            (player.rect.x - camera_x, player.rect.y - camera_y - 20, HEALTH_BAR_WIDTH * health_ratio, HEALTH_BAR_HEIGHT))
+            pygame.draw.rect(screen, HEALTH_BAR_BG_COLOR,
+                            (player_rect.x, player_rect.y - 20, HEALTH_BAR_WIDTH, HEALTH_BAR_HEIGHT))
+            pygame.draw.rect(screen, HEALTH_BAR_COLOR,
+                            (player_rect.x, player_rect.y - 20, HEALTH_BAR_WIDTH * health_ratio, HEALTH_BAR_HEIGHT))
             health_text = font.render(f"{int(player.health)}/{player.max_health}", True, (0, 0, 0))
-            screen.blit(health_text, (player.rect.x - camera_x, player.rect.y - camera_y - 40))
+            screen.blit(health_text, (player_rect.x, player_rect.y - 40))
 
             # Enemy health bar
             if enemy.alive:
                 health_ratio = enemy.health / enemy.max_health
-                pygame.draw.rect(screen, HEALTH_BAR_BG_COLOR, 
-                                (enemy.rect.x - camera_x, enemy.rect.y - camera_y - 20, HEALTH_BAR_WIDTH, HEALTH_BAR_HEIGHT))
-                pygame.draw.rect(screen, HEALTH_BAR_COLOR, 
-                                (enemy.rect.x - camera_x, enemy.rect.y - camera_y - 20, HEALTH_BAR_WIDTH * health_ratio, HEALTH_BAR_HEIGHT))
+                pygame.draw.rect(screen, HEALTH_BAR_BG_COLOR,
+                                (enemy_rect.x, enemy_rect.y - 20, HEALTH_BAR_WIDTH, HEALTH_BAR_HEIGHT))
+                pygame.draw.rect(screen, HEALTH_BAR_COLOR,
+                                (enemy_rect.x, enemy_rect.y - 20, HEALTH_BAR_WIDTH * health_ratio, HEALTH_BAR_HEIGHT))
                 health_text = font.render(f"{int(enemy.health)}/{enemy.max_health}", True, (0, 0, 0))
-                screen.blit(health_text, (enemy.rect.x - camera_x, enemy.rect.y - camera_y - 40))
+                screen.blit(health_text, (enemy_rect.x, enemy_rect.y - 40))
 
             # Draw instructions, debug, and coordinates
             text = font.render("WASD to move, Left Click to attack, Right Click to block, Space to dodge, F to switch, ESC to menu", True, (0, 0, 0))

@@ -1,28 +1,25 @@
 import pygame
 import platform
 
-# Debug: Confirm module is loaded
 print("lupta.py: Module loaded")
 
 # Constants
-WIDTH, HEIGHT = 800, 600  # Screen size
-PLAYER_SIZE = 50          # Player square size
-PLAYER_COLOR = (255, 0, 0)  # Red player
-ENEMY_SIZE = 50           # Enemy square size
-ENEMY_COLOR = (0, 0, 255)  # Blue enemy
-ENEMY_POS = (300, 300)    # Initial enemy position
+WIDTH, HEIGHT = 600,800
+PLAYER_SIZE = 50
+PLAYER_COLOR = (255, 0, 0)
+ENEMY_SIZE = 50
+ENEMY_COLOR = (0, 0, 255)
+ENEMY_POS = (300, 300)
 HEALTH_BAR_WIDTH = 50
 HEALTH_BAR_HEIGHT = 10
-HEALTH_BAR_COLOR = (0, 255, 0)  # Green health
-HEALTH_BAR_BG_COLOR = (255, 0, 0)  # Red background
+HEALTH_BAR_COLOR = (0, 255, 0)
+HEALTH_BAR_BG_COLOR = (255, 0, 0)
 FPS = 60
-MAP_WIDTH, MAP_HEIGHT = 1600, 1200  # Map size
-MAP_COLOR = (255, 255, 255)  # White map
-GRID_COLOR = (0, 0, 0)    # Black grid lines
-GRID_SPACING = 100        # Grid lines every 100 pixels
-DODGE_DURATION = 18       # 0.3 seconds at 60 FPS (18 frames)
-DODGE_DISTANCE = 100      # 1 tile (100 pixels)
-DODGE_COOLDOWN = 60       # 1 second at 60 FPS (60 frames)
+MAP_WIDTH, MAP_HEIGHT = 10000, 10000
+GRID_SPACING = 500  # Adjusted for larger map
+DODGE_DURATION = 18
+DODGE_DISTANCE = 100
+DODGE_COOLDOWN = 60
 
 class Enemy:
     def __init__(self):
@@ -30,10 +27,10 @@ class Enemy:
         self.health = 100
         self.max_health = 100
         self.alive = True
-        self.speed = 4  # Slower than player's 5
-        self.attack_range = 100  # Same as player's attack range
+        self.speed = 4
+        self.attack_range = 100
         self.attack_cooldown = 0
-        self.attack_damage = 10  # Damage per attack
+        self.attack_damage = 10
         self.is_attacking = False
 
     def take_damage(self, damage):
@@ -53,9 +50,7 @@ class Enemy:
         dy = player.rect.centery - self.rect.centery
         distance = math.sqrt(dx**2 + dy**2)
         
-        # Move only if outside attack range
         if distance > self.attack_range:
-            # Normalize movement vector
             if distance > 0:
                 dx = dx * self.speed / distance
                 dy = dy * self.speed / distance
@@ -63,7 +58,6 @@ class Enemy:
                 self.rect.y += dy
                 print(f"lupta.py: Enemy moving to ({self.rect.x}, {self.rect.y})")
             
-            # Keep enemy within map boundaries
             self.rect.x = max(0, min(self.rect.x, MAP_WIDTH - ENEMY_SIZE))
             self.rect.y = max(0, min(self.rect.y, MAP_HEIGHT - ENEMY_SIZE))
 
@@ -78,8 +72,7 @@ class Enemy:
         
         if distance <= self.attack_range:
             self.is_attacking = True
-            self.attack_cooldown = 60  # 1-second cooldown at 60 FPS
-            # Deal damage unless player is blocking or invincible
+            self.attack_cooldown = 60
             if not player.is_blocking and not is_invincible:
                 player.health -= self.attack_damage
                 print(f"lupta.py: Enemy attacks player, player health: {player.health}")
@@ -95,18 +88,22 @@ class Enemy:
             self.attack_cooldown -= 1
 
 def play_game(screen, clock, player):
-    """Fighting mode with enemy, attack, block, and dodge"""
     print("lupta.py: Entering play_game")
     print(f"lupta.py: Player position: ({player.rect.x}, {player.rect.y})")
     enemy = Enemy()
-    
-    # Create white map surface with grid lines
-    map_surface = pygame.Surface((MAP_WIDTH, MAP_HEIGHT))
-    map_surface.fill(MAP_COLOR)
-    for x in range(0, MAP_WIDTH, GRID_SPACING):
-        pygame.draw.line(map_surface, GRID_COLOR, (x, 0), (x, MAP_HEIGHT), 2)  # Thicker lines
-    for y in range(0, MAP_HEIGHT, GRID_SPACING):
-        pygame.draw.line(map_surface, GRID_COLOR, (0, y), (MAP_WIDTH, y), 2)  # Thicker lines
+
+    # Load the map directly
+    try:
+        map_surface = pygame.image.load("map.png")
+    except pygame.error as e:
+        print(f"lupta.py: Failed to load map.png: {e}")
+        map_surface = pygame.Surface((MAP_WIDTH, MAP_HEIGHT))
+        map_surface.fill((255, 255, 255))  # Fallback to white surface
+
+    # Verify map size
+    map_width, map_height = map_surface.get_size()
+    if map_width != MAP_WIDTH or map_height != MAP_HEIGHT:
+        print(f"lupta.py: Warning: Expected map size {MAP_WIDTH}x{MAP_HEIGHT}, got {map_width}x{map_height}")
 
     font = pygame.font.SysFont("arial", 24)
     debug_font = pygame.font.SysFont("arial", 20)
@@ -114,8 +111,8 @@ def play_game(screen, clock, player):
     # Dodge state
     is_dodging = False
     dodge_timer = 0
-    dodge_direction = None  # Will be 'up', 'down', 'left', 'right'
-    last_direction = 'right'  # Default direction if no movement
+    dodge_direction = None
+    last_direction = 'right'
     is_invincible = False
     dodge_cooldown = 0
 
@@ -137,12 +134,12 @@ def play_game(screen, clock, player):
                         return False
                     if event.key == pygame.K_f:
                         print("lupta.py: F pressed, switching to exploration mode")
-                        return "switch_to_exploring"  # Signal to switch modes
+                        return "switch_to_exploring"
                     if event.key == pygame.K_SPACE and not is_dodging and dodge_cooldown <= 0:
                         print("lupta.py: Space pressed, starting dodge")
                         is_dodging = True
                         dodge_timer = DODGE_DURATION
-                        dodge_direction = last_direction  # Use last movement direction
+                        dodge_direction = last_direction
                         is_invincible = True
                         print(f"lupta.py: Dodging {dodge_direction}, invincible: {is_invincible}")
         except Exception as e:
@@ -153,7 +150,6 @@ def play_game(screen, clock, player):
         moved, key_status = player.handle_movement(keys_pressed)
         if moved:
             print(f"lupta.py: Player moved to: ({player.rect.x}, {player.rect.y})")
-            # Update last direction based on keys pressed
             if keys_pressed[pygame.K_w]:
                 last_direction = 'up'
             elif keys_pressed[pygame.K_s]:
@@ -167,7 +163,6 @@ def play_game(screen, clock, player):
         if is_dodging:
             dodge_timer -= 1
             if dodge_timer > 0:
-                # Move player a fraction of the dodge distance each frame
                 fraction = 1.0 / DODGE_DURATION
                 if dodge_direction == 'up':
                     player.rect.y -= DODGE_DISTANCE * fraction
@@ -178,19 +173,15 @@ def play_game(screen, clock, player):
                 elif dodge_direction == 'right':
                     player.rect.x += DODGE_DISTANCE * fraction
             else:
-                # End dodge
                 is_dodging = False
                 is_invincible = False
                 dodge_cooldown = DODGE_COOLDOWN
                 print(f"lupta.py: Dodge ended, invincible: {is_invincible}, cooldown: {dodge_cooldown}")
 
-        # Update dodge cooldown
         if dodge_cooldown > 0:
             dodge_cooldown -= 1
 
-        # Keep player within map boundaries
-        player.rect.x = max(0, min(player.rect.x, MAP_WIDTH - PLAYER_SIZE))
-        player.rect.y = max(0, min(player.rect.y, MAP_HEIGHT - PLAYER_SIZE))
+       
 
         # Update enemy
         enemy.move_towards_player(player)
@@ -215,14 +206,10 @@ def play_game(screen, clock, player):
 
         # Draw everything
         try:
-            # Draw map with grid
+            # Draw map
             screen.blit(map_surface, (-camera_x, -camera_y))
 
-            # Highlight player's current grid cell
-            grid_x = (player.rect.x // GRID_SPACING) * GRID_SPACING
-            grid_y = (player.rect.y // GRID_SPACING) * GRID_SPACING
-            pygame.draw.rect(screen, (255, 255, 0), 
-                            (grid_x - camera_x, grid_y - camera_y, GRID_SPACING, GRID_SPACING), 2)
+           
 
             # Draw player
             pygame.draw.rect(screen, PLAYER_COLOR, 
@@ -250,7 +237,7 @@ def play_game(screen, clock, player):
                 pygame.draw.rect(screen, HEALTH_BAR_BG_COLOR, 
                                 (enemy.rect.x - camera_x, enemy.rect.y - camera_y - 20, HEALTH_BAR_WIDTH, HEALTH_BAR_HEIGHT))
                 pygame.draw.rect(screen, HEALTH_BAR_COLOR, 
-                                (enemy.rect.x - camera_x, player.rect.y - camera_y - 20, HEALTH_BAR_WIDTH * health_ratio, HEALTH_BAR_HEIGHT))
+                                (enemy.rect.x - camera_x, enemy.rect.y - camera_y - 20, HEALTH_BAR_WIDTH * health_ratio, HEALTH_BAR_HEIGHT))
                 health_text = font.render(f"{int(enemy.health)}/{enemy.max_health}", True, (0, 0, 0))
                 screen.blit(health_text, (enemy.rect.x - camera_x, enemy.rect.y - camera_y - 40))
 
